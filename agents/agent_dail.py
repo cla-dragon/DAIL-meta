@@ -409,11 +409,53 @@ class CQLAgentC51LSTM(CQLAgent):
         else:
             return action, out, ht
         
+    def focal_loss(self, goals, goals_emb, epsilon=1e-8):
+        """
+        计算focal loss矩阵
+        
+        Args:
+            goals: (bs, n) 目标向量
+            goals_emb: (bs, n_emb) 目标嵌入向量
+            epsilon: 防止除零的小常数
+            
+        Returns:
+            focal loss的均值
+        """
+        bs = goals.shape[0]
+        
+        # 计算所有pair之间的L2距离的平方
+        # goals_emb: (bs, n_emb) -> (bs, 1, n_emb) 和 (1, bs, n_emb)
+        goals_emb_i = goals_emb.unsqueeze(1)  # (bs, 1, n_emb)
+        goals_emb_j = goals_emb.unsqueeze(0)  # (1, bs, n_emb)
+        
+        # 计算L2距离的平方: ||goal_emb_i - goal_emb_j||_2^2
+        l2_dist_squared = torch.sum((goals_emb_i - goals_emb_j) ** 2, dim=-1)  # (bs, bs)
+        
+        # 判断goal_i == goal_j
+        # goals: (bs, n) -> (bs, 1, n) 和 (1, bs, n)
+        goals_i = goals.unsqueeze(1)  # (bs, 1, n)
+        goals_j = goals.unsqueeze(0)  # (1, bs, n)
+        
+        # 检查goals是否相等 (所有维度都相等)
+        goals_equal = torch.all(goals_i == goals_j, dim=-1)  # (bs, bs)
+        
+        # 构建loss矩阵
+        # 如果goal_i == goal_j: Loss_ij = ||goal_emb_i - goal_emb_j||_2^2
+        # 如果goal_i != goal_j: Loss_ij = 1 / (||goal_emb_i - goal_emb_j||_2^2 + epsilon)
+        loss_matrix = torch.where(
+            goals_equal,
+            l2_dist_squared,
+            1.0 / (l2_dist_squared + epsilon)
+        )
+        
+        return torch.mean(loss_matrix)
 
     def compute_loss(self, states, actions, goals, rewards, dones, masks):
         actions_ = torch.argmax(actions, dim=2, keepdim=True)
         goals_emb = self.net.goal_encoder(goals)
         states_seq = self.net.visual_encoder(states)
+
+        focal_loss = self.focal_loss(goals, goals_emb)
         
         goals_emb = goals_emb.unsqueeze(1).expand(goals_emb.shape[0], states.shape[1], goals_emb.shape[1])
         ht = self.net.get_seq_emb(states_seq, actions, masks)
@@ -461,11 +503,12 @@ class CQLAgentC51LSTM(CQLAgent):
             loss = bellman_error_1 + bellman_error_2 + cql_loss_1 + cql_loss_2
             metrics['alpha'] = cql_alpha
         else:
-            loss = bellman_error_1 + bellman_error_2 + self.config.alpha * (cql_loss_1 + cql_loss_2)
+            loss = bellman_error_1 + bellman_error_2 + self.config.alpha * (cql_loss_1 + cql_loss_2) + focal_loss
         
         metrics['loss'] = loss
         metrics['cql_loss'] = (cql_loss_1 + cql_loss_2)/2
         metrics['q_loss'] = (bellman_error_1 + bellman_error_2)/2
+        metrics['focal_loss'] = focal_loss
         
         return metrics, ht, torch.min(current_values_1, current_values_2).detach()
     
@@ -519,6 +562,10 @@ class CQLAgentC51LSTM(CQLAgent):
         
 
         self.optimizer.zero_grad()
+        if self.config.meta_type == "csro":
+            self.q_psi_optimizer.zero_grad()
+        elif self.config.meta_type == "unicorn":
+            self.reward_predictor_optimizer.zero_grad()
         if self.config.if_clip:
             loss = metrics['loss'] + 0.2 * clip_loss
         else:
@@ -526,6 +573,13 @@ class CQLAgentC51LSTM(CQLAgent):
         loss.backward()
         clip_grad_norm_(self.net.parameters(), 1.)
         self.optimizer.step()
+
+        if self.config.meta_type == "csro":
+            clip_grad_norm_(self.q_psi.parameters(), 1.)
+            self.q_psi_optimizer.step()
+        elif self.config.meta_type == "unicorn":
+            clip_grad_norm_(self.reward_predictor.parameters(), 1.)
+            self.reward_predictor_optimizer.step()
             
         # ------------------- update target network ------------------- #
         if (self.ct+1) % self.config.update_frequency == 0:

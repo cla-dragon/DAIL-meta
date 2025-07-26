@@ -249,8 +249,9 @@ class Network(nn.Module):
             q_values_2 = self.q_net_2(states, goals_emb, ht)
         
         if 'C51' in self.config.model_type:
-            probs_1 = F.softmax(q_values_1, dim=-1)
-            probs_2 = F.softmax(q_values_2, dim=-1)
+            # probs_1 = F.softmax(q_values_1, dim=-1)
+            # probs_2 = F.softmax(q_values_2, dim=-1)
+            probs_1, probs_2= q_values_1, q_values_2
             q_values_1 = (self.atoms * probs_1).sum(dim=-1)
             q_values_2 = (self.atoms * probs_2).sum(dim=-1)
             

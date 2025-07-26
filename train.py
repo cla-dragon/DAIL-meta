@@ -33,7 +33,7 @@ def get_config():
     parser = argparse.ArgumentParser(description='RL')
     parser.add_argument("--run_name", type=str, default="CQL-DQN", help="Run name, default: CQL-DQN")
     parser.add_argument("--env", type=str, default="CartPole-v0", help="Gym environment name, default: CartPole-v0")
-    parser.add_argument("--episodes", type=int, default=200, help="Number of episodes, default: 200")
+    parser.add_argument("--episodes", type=int, default=50, help="Number of episodes, default: 200")
     parser.add_argument("--buffer_size", type=int, default=100_000, help="Maximal training dataset size, default: 100_000")
     parser.add_argument("--batch_size", type=int, default=64, help="default: 256")
     parser.add_argument("--batch_size_clip", type=int, default=128, help="default: 256")
@@ -77,7 +77,7 @@ def get_config():
     parser.add_argument("--expert", type=bool, default=False, help="")
     parser.add_argument("--use_ht", type=bool, default=False, help="use lstm to substitute the original")
     
-    parser.add_argument("--meta_type", type=str, default="focal", help="meta RL type, default: focal")
+    parser.add_argument("--meta_type", type=str, default="csro", help="meta RL type, default: focal")
     args = parser.parse_args()
     return args
 
@@ -224,7 +224,7 @@ def train(config):
     
     if config.model_type == 'CQL' or config.model_type == 'CQL fixed':
         Agent = CQLAgentNaiveLSTM
-    elif config.model_type == 'C51 CQL' or config.model_type == 'C51 CQL fixed':
+    elif config.model_type == 'C51 CQL' or config.model_type == 'C51 CQL fixed' or config.model_type == 'C51 CQL Focal':
         Agent = CQLAgentC51LSTM
     elif 'Meta' in config.model_type:
         Agent = CQLAgentNaiveLSTMMeta
@@ -278,9 +278,12 @@ pre_set = {
     0: ['cuda:2', 'CQL', False, 2],
     1: ['cuda:0', 'CQL', True, 2],
     2: ['cuda:1', 'C51 CQL', False, 2],
-    3: ['cuda:2', 'C51 CQL', True, 2],
+    3: ['cuda:0', 'C51 CQL Focal', True, 2],
     4: ['cuda:1', 'Meta_Focal', False, 2],
+    5: ['cuda:5', 'Meta_csro', False, 2],
+    6: ['cuda:3', 'Meta_unicorn', False, 2],
 }
+# Remember to change the device and meta_type in config
 
 def set_seed(seed):
     random.seed(seed)
@@ -289,7 +292,7 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 if __name__ == "__main__":
-    sets = pre_set[4]
+    sets = pre_set[5]
 
     device_str = sets[0]
     config = get_config()
