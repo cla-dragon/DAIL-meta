@@ -62,7 +62,7 @@ def get_config():
     parser.add_argument("--history_frame", type=int, default=1, help="")
     parser.add_argument("--target_gap", type=int, default=0.8, help="")
     parser.add_argument("--update_frequency", type=int, default=1000, help="")
-    parser.add_argument("--device", type=str, default=device_str, help="LSTM or CLIP")
+    parser.add_argument("--device", type=int, default=0, help="GPU cuda device number, default: 0")
     
     parser.add_argument("--seed", type=int, default=234, help="Seed, default: 1")
     parser.add_argument("--if_clip", type=bool, default=False, help="")
@@ -77,7 +77,7 @@ def get_config():
     parser.add_argument("--expert", type=bool, default=False, help="")
     parser.add_argument("--use_ht", type=bool, default=False, help="use lstm to substitute the original")
     
-    parser.add_argument("--meta_type", type=str, default="csro", help="meta RL type, default: focal")
+    parser.add_argument("--meta_type", type=str, default="focal", help="meta RL type, default: focal")
     args = parser.parse_args()
     return args
 
@@ -275,13 +275,14 @@ def train(config):
             batches = batches_critic
 
 pre_set = {
-    0: ['cuda:2', 'CQL', False, 2],
-    1: ['cuda:0', 'CQL', True, 2],
-    2: ['cuda:1', 'C51 CQL', False, 2],
-    3: ['cuda:0', 'C51 CQL Focal', True, 2],
-    4: ['cuda:1', 'Meta_Focal', False, 2],
-    5: ['cuda:5', 'Meta_csro', False, 2],
-    6: ['cuda:3', 'Meta_unicorn', False, 2],
+    0: ['cuda:2', 'CQL', False, 2, 'none'],
+    1: ['cuda:0', 'CQL', True, 2, 'none'],
+    2: ['cuda:1', 'C51 CQL', False, 2, 'none'],
+    3: ['cuda:0', 'C51 CQL Focal', True, 2, 'focal'],
+    4: ['cuda:1', 'Meta_Focal', False, 2, 'focal'],
+    5: ['cuda:5', 'Meta_csro', False, 2, 'csro'],
+    6: ['cuda:3', 'Meta_unicorn', False, 2, 'unicorn'],
+    7: ['cuda:4', 'Meta_ccm', False, 2, 'ccm'],
 }
 # Remember to change the device and meta_type in config
 
@@ -292,23 +293,25 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 if __name__ == "__main__":
-    sets = pre_set[5]
+    sets = pre_set[7]
 
-    device_str = sets[0]
+    # device_str = sets[0]
     config = get_config()
-    config.device = sets[0]
+    device_str = f'cuda:{config.device}'
+    # config.device = sets[0]
     config.model_type = sets[1]
     config.if_clip = sets[2]
     config.alpha = sets[3]
     config.n_atoms = 51
     config.clip_type = 'CLIP'
+    config.meta_type = sets[4]
 
     if 'fix' in config.model_type:
         config.fix = True
     else:
         config.fix = False
 
-    config.seed = 24
+    # config.seed = 1
     set_seed(config.seed)
     
     device = torch.device(device_str if torch.cuda.is_available() else "cpu")

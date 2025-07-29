@@ -6,7 +6,13 @@ from torch.nn.utils import clip_grad_norm_
 from agents.agent_dail import CQLAgentC51LSTM
 
 from networks.networks_meta import StateActionEmbedding, RewardPredictor
+from networks.networks_base_babyai import GoalEncoder
 
+@torch.no_grad()
+def momentum_update(model_q, model_k, m=0.99):
+    """Update the key encoder using momentum"""
+    for param_q, param_k in zip(model_q.layer.parameters(), model_k.layer.parameters()):
+        param_k.data = param_k.data * m + param_q.data * (1. - m)
 class CQLAgentNaiveLSTMMeta(CQLAgentC51LSTM):
     def __init__(self, env, action_size, hidden_size=64, device="cpu", config=None):
         super().__init__(env, action_size, hidden_size=hidden_size, device=device, config=config)
@@ -14,9 +20,13 @@ class CQLAgentNaiveLSTMMeta(CQLAgentC51LSTM):
             self.q_psi = StateActionEmbedding(config.feature_size, 128, config.feature_size).to(self.device)
             self.q_psi_optimizer = torch.optim.Adam(self.q_psi.parameters(), lr=config.q_learning_rate)
             self.meta_lambda = 1
-        if config.meta_type == "unicorn":
+        elif config.meta_type == "unicorn":
             self.reward_predictor = RewardPredictor(config.feature_size, 256, config.feature_size).to(self.device)
             self.reward_predictor_optimizer = torch.optim.Adam(self.reward_predictor.parameters(), lr=config.q_learning_rate)
+        elif config.meta_type == "ccm":
+            self.momentum_goal_encoder = GoalEncoder(256, config.device).to(self.device)
+            for param_q, param_k in zip(self.momentum_goal_encoder.layer.parameters(), self.net.goal_encoder.layer.parameters()):
+                param_q.data = param_k.data
     
     def masked_loss(self, x, y, mask):
         x = x[mask.to(torch.bool)]
@@ -197,6 +207,26 @@ class CQLAgentNaiveLSTMMeta(CQLAgentC51LSTM):
         loss = F.cross_entropy(rewards_predicted, valid_rewards, reduction='mean')  # [1]
 
         return loss
+    
+    def ccm_loss(self, goals, goals_emb, temperature=0.07):
+            # Normalize to unit vectors
+        with torch.no_grad():
+            momentum_update(self.net.goal_encoder, self.momentum_goal_encoder)
+            z_q = self.momentum_goal_encoder(goals)
+        z_k = goals_emb
+        z_q = F.normalize(z_q, dim=1)
+        z_k = F.normalize(z_k, dim=1)
+
+        # Compute similarity matrix [B, B]
+        logits = torch.matmul(z_q, z_k.T) / temperature  # [B, B]
+
+        # Positive samples are on the diagonal
+        labels = torch.arange(z_q.size(0), device=z_q.device)
+
+        # Cross-entropy loss
+        loss = F.cross_entropy(logits, labels)
+
+        return loss
 
     def compute_loss(self, states, actions, goals, rewards, dones, masks):
         actions_ = torch.argmax(actions, dim=2, keepdim=True)
@@ -206,6 +236,8 @@ class CQLAgentNaiveLSTMMeta(CQLAgentC51LSTM):
             meta_loss = self.focal_loss(goals, goals_emb)
         elif self.config.meta_type == "csro" or self.config.meta_type == "unicorn":
             focal_loss = self.focal_loss(goals, goals_emb)
+        elif self.config.meta_type == "ccm":
+            meta_loss = self.ccm_loss(goals, goals_emb)
 
         unique_goals_emb = goals_emb
         goals_emb = goals_emb.unsqueeze(1).expand(goals_emb.shape[0], states.shape[1], goals_emb.shape[1])
