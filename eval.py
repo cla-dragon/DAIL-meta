@@ -8,6 +8,7 @@ import os
 import torch.multiprocessing as mp
 
 from agents.agent_dail import CQLAgentNaiveLSTM, CQLAgentC51LSTM
+from agents.agent_meta import CQLAgentNaiveLSTMMeta
 
 from babyai.new_missions import *
 
@@ -21,7 +22,7 @@ import copy
 
 os.environ['WANDB_MODE'] = 'offline'
 
-device_str = "cuda:1"
+device_str = "cuda:6"
 device = torch.device(device_str if torch.cuda.is_available() else "cpu")
 
 def get_config():
@@ -300,7 +301,7 @@ def evaluate(config, agents, settings, batches, manager, test_ct, success_ct, ev
     Makes an evaluation run with the current policy
     """
     
-    with open('BabyAI/data/in_missions.pk', 'rb') as f:
+    with open('data/in_missions.pk', 'rb') as f:
         in_missions = pickle.load(f)
 
     task_queue = manager.Queue()
@@ -325,7 +326,7 @@ def evaluate(config, agents, settings, batches, manager, test_ct, success_ct, ev
     
 def eval(config, agents, settings, batches, manager, gen_image):
     for a, s in zip(agents, settings):
-        a.load_model(f'BabyAI/data/models/{s[-1]}')
+        a.load_model(f'{s[-1]}')
     
     test_ct = manager.dict()
     test_ct["ID"] = {
@@ -380,19 +381,21 @@ if __name__ == "__main__":
     
     config = get_config()
     config.clip_type = 'DAIL'
-    task_config = {}
-    env = PickupDist(task_config)
+    # task_config = {}
+    # env = PickupDist(task_config)
+    env = SynthLoc()
     
     average10 = deque(maxlen=10)
 
     settings = [
-        ['C51 CQL', CQLAgentC51LSTM, True, "babyai_C51 CQL_2_True_123.pt"],
+        ['CQL', CQLAgentNaiveLSTM, False, 'none', "data/models/babyai_CQL_2_False_1.pt"],
     ]
       
     agents = []
     for idx, s in enumerate(settings):
         config.model_type = s[0]
         config.if_config = s[2]
+        config.meta_type = s[3]
         agent = s[1](env=env,
             action_size=env.action_space.n,
             hidden_size=config.feature_size,

@@ -1,12 +1,16 @@
 import torch
+import pickle
 
-state_emb = torch.randn(2519, 1792)  # Example state embedding
-action = torch.randint(0, 7, (2519, 1))  # Example action tensor
+model_type='CQL'
+LSTM=True
 
-action = action.squeeze(1).to(torch.long)  # [batch]
-state_emb = state_emb.reshape(state_emb.shape[0], -1, 7)  # [batch, feature_size, 7]
-action_expanded = action.view(-1, 1, 1).expand(-1, 256, 1)  # [2519, 256, 1]
-s_a = torch.gather(state_emb, dim=2, index=action_expanded)  # [2519, 256, 1]
-s_a = s_a.squeeze(2)  # [2519, 256]
+if ('C51' in model_type or 'QR' in model_type) and LSTM:
+    Q_Net = 1
+elif 'C51' not in model_type and LSTM:
+    Q_Net = 2
+elif 'C51' in model_type and not LSTM:
+    Q_Net = 3
+else:
+    Q_Net = 4
 
-print("s_a shape:", s_a.shape)  # Should be [batch, feature_size, 7]
+print('Q_Net:', Q_Net)

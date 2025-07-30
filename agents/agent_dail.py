@@ -556,10 +556,7 @@ class CQLAgentC51LSTM(CQLAgent):
             dones, 
             masks)
         
-        metrics['loss'] = metrics['loss']
-        clip_loss = self.clip_loss(ht, actions, masks, goals)
-        metrics['clip_loss'] = clip_loss
-        
+        # metrics['loss'] = metrics['loss']
 
         self.optimizer.zero_grad()
         if self.config.meta_type == "csro":
@@ -567,6 +564,8 @@ class CQLAgentC51LSTM(CQLAgent):
         elif self.config.meta_type == "unicorn":
             self.reward_predictor_optimizer.zero_grad()
         if self.config.if_clip:
+            clip_loss = self.clip_loss(ht, actions, masks, goals)
+            metrics['clip_loss'] = clip_loss
             loss = metrics['loss'] + 0.2 * clip_loss
         else:
             loss = metrics['loss']

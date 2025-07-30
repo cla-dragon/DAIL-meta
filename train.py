@@ -82,11 +82,11 @@ def get_config():
     return args
 
 def collate_fn(batch):
-    removed_batch = []
-    for i in range(len(batch)):
-        if batch[i][2][-1][0] > 0:
-            removed_batch.append(batch[i])
-    batch = removed_batch
+    # removed_batch = []
+    # for i in range(len(batch)):
+    #     if batch[i][2][-1][0] > 0:
+    #         removed_batch.append(batch[i])
+    # batch = removed_batch
     
     lengths = [len(data[0]) for data in batch]
     
@@ -293,7 +293,7 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 if __name__ == "__main__":
-    sets = pre_set[7]
+    sets = pre_set[5]
 
     # device_str = sets[0]
     config = get_config()
